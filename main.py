@@ -26,7 +26,6 @@ router = Router()
 
 # === Запрос к Hugging Face ===
 def query_gemma(prompt: str) -> str:
-    # Формат для Mistral
     formatted_prompt = f"<s>[INST] {prompt} [/INST]"
     API_URL = f"https://api-inference.huggingface.co/models/{MODEL}"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
@@ -44,16 +43,19 @@ def query_gemma(prompt: str) -> str:
         if response.status_code == 200:
             result = response.json()
             if isinstance(result, list) and "generated_text" in result[0]:
-                return result[0]["generated_text"].strip()
+                # Убираем входной промпт из ответа
+                full_text = result[0]["generated_text"]
+                if full_text.startswith(formatted_prompt):
+                    return full_text[len(formatted_prompt):].strip()
+                return full_text.strip()
             else:
-                return "Модель вернула неожиданный формат ответа."
+                return "Модель вернула неожиданный формат."
         else:
-            error_detail = response.text[:200]  # обрезаем для лога
-            print(f"Ошибка HF API: {response.status_code} - {error_detail}")
-            return "Извините, не удалось получить ответ от модели."
+            print(f"Ошибка HF API: {response.status_code} - {response.text[:200]}")
+            return "Не удалось получить ответ от модели."
     except Exception as e:
-        print(f"Исключение при запросе к HF: {str(e)}")
-        return "Произошла ошибка при обращении к модели."
+        print(f"Исключение: {str(e)}")
+        return "Ошибка при обращении к модели."
 
 # === Обработчики ===
 @router.message(Command("start"))
