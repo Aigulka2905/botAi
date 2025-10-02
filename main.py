@@ -39,7 +39,7 @@ def query_gemma(prompt: str) -> str:
         }
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
         if response.status_code == 200:
             result = response.json()
             if isinstance(result, list) and "generated_text" in result[0]:
