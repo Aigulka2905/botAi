@@ -10,7 +10,7 @@ import logging
 # === Настройки ===
 HF_TOKEN = os.getenv("HF_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-MODEL = "google/gemma-2b-it"  # Доступна в бесплатном Inference API
+MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 
 # Получаем домен из переменной окружения (надёжнее, чем RENDER_EXTERNAL_URL)
 webhook_domain = os.getenv("WEBHOOK_DOMAIN")
@@ -26,8 +26,8 @@ router = Router()
 
 # === Запрос к Hugging Face ===
 def query_gemma(prompt: str) -> str:
-    # Формат для Gemma Instruct
-    formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model"
+    # Формат для Mistral
+    formatted_prompt = f"<s>[INST] {prompt} [/INST]"
     API_URL = f"https://api-inference.huggingface.co/models/{MODEL}"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {
@@ -36,8 +36,7 @@ def query_gemma(prompt: str) -> str:
             "max_new_tokens": 512,
             "temperature": 0.7,
             "top_p": 0.95,
-            "do_sample": True,
-            "return_full_text": False  # ← критически важно!
+            "do_sample": True
         }
     }
     try:
