@@ -15,7 +15,7 @@ WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://your-render-url.onrender.com")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-MODEL = "google/gemma-1.1-2b-it"  # или gemma-1.1-7b-it
+MODEL = "google/gemma-2b-it"
 
 # === Инициализация ===
 bot = Bot(token=TELEGRAM_TOKEN)
