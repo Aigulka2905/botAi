@@ -8,9 +8,8 @@ from aiohttp import web
 import logging
 
 # === Настройки ===
-HF_TOKEN = os.getenv("HF_TOKEN")
+OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 
 # Получаем домен из переменной окружения (надёжнее, чем RENDER_EXTERNAL_URL)
 webhook_domain = os.getenv("WEBHOOK_DOMAIN")
@@ -19,39 +18,34 @@ if webhook_domain:
 else:
     raise ValueError("Переменная WEBHOOK_DOMAIN не задана в Render!")
 
+# Проверки на токены
+if not OPENROUTER_TOKEN:
+    raise ValueError("OPENROUTER_TOKEN не задан!")
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN не задан!")
+
 # === Инициализация ===
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 router = Router()
 
-# === Запрос к Hugging Face ===
-def query_gemma(prompt: str) -> str:
-    formatted_prompt = f"<s>[INST] {prompt} [/INST]"
-    API_URL = f"https://api-inference.huggingface.co/models/{MODEL}"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+# === Запрос к OpenRouter ===
+def query_qwen(prompt: str) -> str:
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {OPENROUTER_TOKEN}"}
     payload = {
-        "inputs": formatted_prompt,
-        "parameters": {
-            "max_new_tokens": 512,
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "do_sample": True
-        }
+        "model": "qwen/qwen2.5-vl-32b-instruct:free",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 512,
+        "temperature": 0.7,
+        "top_p": 0.95
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and "generated_text" in result[0]:
-                # Убираем входной промпт из ответа
-                full_text = result[0]["generated_text"]
-                if full_text.startswith(formatted_prompt):
-                    return full_text[len(formatted_prompt):].strip()
-                return full_text.strip()
-            else:
-                return "Модель вернула неожиданный формат."
+            return response.json()["choices"][0]["message"]["content"].strip()
         else:
-            print(f"Ошибка HF API: {response.status_code} - {response.text[:200]}")
+            print(f"Ошибка OpenRouter: {response.status_code} - {response.text[:200]}")
             return "Не удалось получить ответ от модели."
     except Exception as e:
         print(f"Исключение: {str(e)}")
@@ -60,13 +54,13 @@ def query_gemma(prompt: str) -> str:
 # === Обработчики ===
 @router.message(Command("start"))
 async def send_welcome(message: Message):
-    await message.answer("Привет! Я бот на базе Gemma от Google 🤖\nНапишите мне что-нибудь!")
+    await message.answer("Привет! Я бот на базе Qwen от Alibaba 🤖\nНапишите мне что-нибудь!")
 
 @router.message()
 async def handle_message(message: Message):
     user_text = message.text
     thinking_msg = await message.answer("Думаю... ⏳")
-    response = query_gemma(user_text)
+    response = query_qwen(user_text)
     await thinking_msg.edit_text(response)
 
 dp.include_router(router)
@@ -80,6 +74,7 @@ async def on_shutdown(app: web.Application):
     await bot.delete_webhook()
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     port = int(os.environ.get("PORT", 10000))
     app = web.Application()
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
