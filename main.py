@@ -12,12 +12,12 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 MODEL = "google/gemma-2b-it"  # Доступна в бесплатном Inference API
 
-# Определяем URL вебхука
+# Определяем URL вебхука БЕЗ порта
 render_host = os.getenv("RENDER_EXTERNAL_URL")
 if render_host:
-    WEBHOOK_URL = f"https://{render_host}/webhook"
+    WEBHOOK_URL = f"https://{render_host}/webhook"  # ← без :10000!
 else:
-    # Для локального тестирования (необязательно)
+    # Для локального тестирования (например, через ngrok)
     WEBHOOK_URL = "https://your-ngrok-url.ngrok.io/webhook"
 
 # === Инициализация ===
