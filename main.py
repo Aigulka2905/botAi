@@ -6,12 +6,14 @@ from aiogram.filters import Command
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 import logging
+from PyPDF2 import PdfReader
+from sentence_transformers import SentenceTransformer, util
 
 # === Настройки ===
 OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# Получаем домен из переменной окружения (надёжнее, чем RENDER_EXTERNAL_URL)
+# Получаем домен из переменной окружения
 webhook_domain = os.getenv("WEBHOOK_DOMAIN")
 if webhook_domain:
     WEBHOOK_URL = f"https://{webhook_domain}/webhook"
@@ -29,13 +31,59 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 router = Router()
 
-# === Запрос к OpenRouter ===
+# === Загрузка инструкций из PDF (RAG setup) ===
+# Укажите пути к вашим PDF-файлам (загрузите их в корень проекта)
+PDF_FILES = ["instructions.pdf"]  # Добавьте все файлы, если несколько
+
+# Модель для embeddings (локальная, не требует API)
+embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Лёгкая модель для семантики
+
+# Извлекаем текст из PDF и разбиваем на абзацы
+documents = []
+for pdf_path in PDF_FILES:
+    if os.path.exists(pdf_path):
+        reader = PdfReader(pdf_path)
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]  # Разбиваем на абзацы
+                documents.extend(paragraphs)
+    else:
+        logging.warning(f"PDF файл {pdf_path} не найден!")
+
+# Предвычисляем embeddings для документов
+if documents:
+    doc_embeddings = embedder.encode(documents, convert_to_tensor=True)
+else:
+    doc_embeddings = None
+    logging.error("Нет документов для RAG!")
+
+# === Запрос к OpenRouter с RAG ===
 def query_qwen(prompt: str) -> str:
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENROUTER_TOKEN}"}
+
+    # RAG: Поиск релевантных документов
+    relevant_context = ""
+    if doc_embeddings is not None:
+        query_embedding = embedder.encode(prompt, convert_to_tensor=True)
+        cos_scores = util.pytorch_cos_sim(query_embedding, doc_embeddings)[0]
+        top_results = cos_scores.topk(3)  # Топ-3 релевантных абзаца
+        for score, idx in zip(top_results[0], top_results[1]):
+            if score > 0.5:  # Порог релевантности (настройте)
+                relevant_context += documents[idx] + "\n\n"
+
+    # Формируем messages с контекстом, если он есть
+    messages = [
+        {"role": "system", "content": "Ты эксперт по электронным торговым площадкам (ЭТП). Отвечай на вопросы пользователя пошагово, четко и только на русском языке. Если вопрос не касается ЭТП, скажи 'Это вне моей специализации'."}
+    ]
+    if relevant_context:
+        messages.append({"role": "system", "content": f"Используй этот контекст из инструкций для ответа: {relevant_context}"})
+    messages.append({"role": "user", "content": prompt})
+
     payload = {
         "model": "qwen/qwen2.5-vl-32b-instruct:free",
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "max_tokens": 512,
         "temperature": 0.7,
         "top_p": 0.95
@@ -54,7 +102,7 @@ def query_qwen(prompt: str) -> str:
 # === Обработчики ===
 @router.message(Command("start"))
 async def send_welcome(message: Message):
-    await message.answer("Привет! Я бот на базе Qwen от Alibaba 🤖\nНапишите мне что-нибудь!")
+    await message.answer("Привет! Я бот-эксперт по электронным торговым площадкам (ЭТП) на базе Qwen от Alibaba 🤖\nЗадайте вопрос по инструкциям работы на ЭТП, например: 'Как зарегистрироваться на ЕИС?'")
 
 @router.message()
 async def handle_message(message: Message):

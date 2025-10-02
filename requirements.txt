@@ -1,2 +1,4 @@
 aiogram==3.6.0
 requests==2.31.0
+PyPDF2  # Для парсинга PDF
+sentence-transformers  # Для семантического поиска (embeddings)
